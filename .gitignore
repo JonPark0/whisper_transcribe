@@ -1,0 +1,12 @@
+# Ignore Directory used for Dev
+audio
+chat
+result
+
+# Python Virtual Environment
+venv
+
+# AI Related Files
+CLAUDE.md
+AGENTS.md
+GEMINI.md
