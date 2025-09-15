@@ -55,6 +55,12 @@ python3 convert.py -i audio.mp3 -o ./output/ -ch 60 --flash-attn
 
 # Default chunked processing (30-second chunks)
 python3 convert.py -i *.wav -o ./output/ -ch -ts -v
+
+# With translation to English
+python3 convert.py -i foreign_audio.mp3 -o ./output/ -tr en -ts -v
+
+# Translate Spanish audio to English with Flash Attention
+python3 convert.py -i spanish_lecture.mp3 -o ./output/ -tr en --flash-attn
 ```
 
 ## Parameters
@@ -69,6 +75,7 @@ python3 convert.py -i *.wav -o ./output/ -ch -ts -v
 - `-to`, `--timeout`: Set timeout in seconds for each file processing
 - `-ch`, `--chunked`: Enable chunked long-form processing with specified chunk length in seconds (default: 30)
 - `--flash-attn`: Enable Flash Attention 2 for faster processing on compatible GPUs
+- `-tr`, `--translate`: Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr")
 
 ## Output
 

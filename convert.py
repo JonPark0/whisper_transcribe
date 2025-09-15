@@ -25,10 +25,11 @@ def timeout_handler(signum, frame):
     raise TimeoutException("Timeout occurred")
 
 class WhisperTranscriber:
-    def __init__(self, verbose: bool = False, chunk_length: int = 30, use_flash_attn: bool = False):
+    def __init__(self, verbose: bool = False, chunk_length: int = 30, use_flash_attn: bool = False, target_language: str = None):
         self.verbose = verbose
         self.chunk_length = chunk_length
         self.use_flash_attn = use_flash_attn
+        self.target_language = target_language
         self.model = None
         self.processor = None
         self.pipe = None
@@ -70,19 +71,30 @@ class WhisperTranscriber:
         
         self.processor = AutoProcessor.from_pretrained(model_id)
         
-        # Re-create pipeline for long-form transcription with ignore_warning
+        # Prepare generation config to fix deprecation warnings
+        generation_config = {
+            "max_new_tokens": 440,
+            "return_timestamps": True,
+        }
+
+        # Add language settings if specified
+        if self.target_language:
+            generation_config["language"] = self.target_language
+            generation_config["task"] = "translate"
+            self.log(f"Translation enabled: translating to {self.target_language}")
+
+        # Re-create pipeline for long-form transcription
         from transformers import pipeline
         self.pipe = pipeline(
             "automatic-speech-recognition",
             model=self.model,
             tokenizer=self.processor.tokenizer,
             feature_extractor=self.processor.feature_extractor,
-            max_new_tokens=440,  # Reduced to avoid token limit error
             chunk_length_s=self.chunk_length,
             batch_size=16,
             return_timestamps=True,
             device=device,
-            ignore_warning=True  # Ignore the experimental chunking warning
+            generate_kwargs=generation_config
         )
         self.log(f"Model loaded successfully on {device} with chunk length {self.chunk_length}s")
     
@@ -93,35 +105,43 @@ class WhisperTranscriber:
         try:
             # Try to load audio with multiple methods for better format support
             audio = None
-            try:
-                audio, sample_rate = librosa.load(audio_path, sr=16000)
-                self.log(f"Successfully loaded audio with librosa. Duration: {len(audio)/16000:.2f}s")
-            except Exception as e:
-                self.log(f"Librosa failed: {e}")
-                # Fallback: try different librosa parameters
+
+            # Try pydub first for better M4A/AAC support and to avoid librosa deprecation warnings
+            if HAS_PYDUB:
                 try:
-                    audio, sample_rate = librosa.load(audio_path, sr=None)
+                    self.log("Trying pydub for audio loading...")
+                    audio_segment = AudioSegment.from_file(audio_path)
+                    audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
+                    audio = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
+                    if audio_segment.sample_width == 2:
+                        audio = audio / 32768.0
+                    elif audio_segment.sample_width == 4:
+                        audio = audio / 2147483648.0
+                    self.log(f"Successfully loaded audio with pydub. Duration: {len(audio)/16000:.2f}s")
+                except Exception as e:
+                    self.log(f"Pydub failed: {e}")
+                    audio = None
+
+            # Fallback to librosa if pydub fails
+            if audio is None:
+                try:
+                    # Use librosa with soundfile backend to avoid audioread deprecation
+                    import soundfile as sf
+                    audio, sample_rate = sf.read(audio_path)
                     if sample_rate != 16000:
                         audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
-                    self.log(f"Successfully loaded and resampled audio. Duration: {len(audio)/16000:.2f}s")
-                except Exception as e2:
-                    self.log(f"Librosa fallback failed: {e2}")
-                    # Final fallback: use pydub if available
-                    if HAS_PYDUB:
-                        try:
-                            self.log("Trying pydub for audio loading...")
-                            audio_segment = AudioSegment.from_file(audio_path)
-                            audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
-                            audio = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
-                            if audio_segment.sample_width == 2:
-                                audio = audio / 32768.0
-                            elif audio_segment.sample_width == 4:
-                                audio = audio / 2147483648.0
-                            self.log(f"Successfully loaded audio with pydub. Duration: {len(audio)/16000:.2f}s")
-                        except Exception as e3:
-                            raise Exception(f"All audio loading methods failed. Librosa: {e}, Librosa fallback: {e2}, Pydub: {e3}")
-                    else:
-                        raise Exception(f"Could not load audio file. Librosa: {e}, Librosa fallback: {e2}")
+                    # Convert to mono if stereo
+                    if len(audio.shape) > 1:
+                        audio = np.mean(audio, axis=1)
+                    self.log(f"Successfully loaded audio with soundfile. Duration: {len(audio)/16000:.2f}s")
+                except Exception as e:
+                    self.log(f"Soundfile failed: {e}")
+                    # Final fallback: librosa (may show deprecation warnings)
+                    try:
+                        audio, sample_rate = librosa.load(audio_path, sr=16000)
+                        self.log(f"Successfully loaded audio with librosa (with warnings). Duration: {len(audio)/16000:.2f}s")
+                    except Exception as e2:
+                        raise Exception(f"All audio loading methods failed. Pydub: {e if HAS_PYDUB else 'Not available'}, Soundfile: {e}, Librosa: {e2}")
             
             if audio is None or len(audio) == 0:
                 raise Exception("Audio file appears to be empty or corrupted")
@@ -220,6 +240,8 @@ Examples:
   python3 convert.py -i file1.wav file2.mp3 -o ./output/
   python3 convert.py -i audio.mp3 -o ./output/ -ch 60 --flash-attn
   python3 convert.py -i *.wav -o ./output/ -ch -ts -v
+  python3 convert.py -i audio.mp3 -o ./output/ -tr en -ts -v
+  python3 convert.py -i spanish_audio.mp3 -o ./output/ -tr en --flash-attn
         """
     )
     
@@ -237,6 +259,8 @@ Examples:
                        help='Enable chunked long-form processing with specified chunk length in seconds (default: 30).')
     parser.add_argument('--flash-attn', action='store_true',
                        help='Enable Flash Attention 2 for faster processing on compatible GPUs.')
+    parser.add_argument('-tr', '--translate', type=str, metavar='LANGUAGE',
+                       help='Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr").')
     
     args = parser.parse_args()
     
@@ -262,9 +286,10 @@ Examples:
     chunk_length = args.chunked if args.chunked is not None else 30
     
     transcriber = WhisperTranscriber(
-        verbose=args.verbose, 
-        chunk_length=chunk_length, 
-        use_flash_attn=args.flash_attn
+        verbose=args.verbose,
+        chunk_length=chunk_length,
+        use_flash_attn=args.flash_attn,
+        target_language=args.translate
     )
     transcriber.load_model()
     
