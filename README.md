@@ -61,6 +61,12 @@ python3 convert.py -i foreign_audio.mp3 -o ./output/ -tr en -ts -v
 
 # Translate Spanish audio to English with Flash Attention
 python3 convert.py -i spanish_lecture.mp3 -o ./output/ -tr en --flash-attn
+
+# With automatic enhancement using Gemini API
+python3 convert.py -i audio.mp3 -o ./output/ -ts -e
+
+# With custom enhancement prompt
+python3 convert.py -i lecture.mp3 -o ./output/ -e "Focus on technical terms and improve structure"
 ```
 
 ## Parameters
@@ -76,6 +82,7 @@ python3 convert.py -i spanish_lecture.mp3 -o ./output/ -tr en --flash-attn
 - `-ch`, `--chunked`: Enable chunked long-form processing with specified chunk length in seconds (default: 30)
 - `--flash-attn`: Enable Flash Attention 2 for faster processing on compatible GPUs
 - `-tr`, `--translate`: Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr")
+- `-e`, `--enhance`: Automatically execute enhancement process using Gemini API. Optional custom prompt can be provided
 
 ## Output
 
@@ -136,6 +143,9 @@ Download from https://ffmpeg.org/download.html and add to PATH
 - psutil>=7.0.0 (system utilities for Flash Attention)
 - flash-attn>=2.7.4 (Flash Attention 2 for GPU acceleration)
 
+### Optional Enhancement Dependencies
+- google-generativeai>=0.8.0 (Google Gemini API for transcript enhancement)
+
 ### Flash Attention 2 Requirements (Optional)
 Flash Attention 2 provides significant performance improvements for GPU processing:
 
@@ -154,6 +164,49 @@ pip install flash-attn --no-build-isolation
 ```
 
 **Note:** Flash Attention 2 installation may take 5-10 minutes as it compiles from source. If installation fails, the tool will automatically fall back to standard attention.
+
+### Transcript Enhancement with Gemini API (Optional)
+The enhancement feature uses Google's Gemini 2.0 Flash Experimental model to improve transcript quality:
+
+**Setup:**
+1. Get a Google AI API key from [Google AI Studio](https://aistudio.google.com/)
+2. Set the environment variable:
+   ```bash
+   export GEMINI_API_KEY='your-api-key-here'
+   ```
+3. Install the dependency:
+   ```bash
+   pip install google-generativeai>=0.8.0
+   ```
+
+**Enhancement Features:**
+- Grammar and punctuation correction
+- Improved sentence structure and readability
+- Technical term correction based on context
+- Removal of excessive filler words
+- Better formatting with headings and structure
+- Optional translation to target language
+
+**Usage:**
+```bash
+# Basic enhancement
+python3 convert.py -i audio.mp3 -o ./output/ -e
+
+# Enhancement with custom prompt
+python3 convert.py -i lecture.mp3 -o ./output/ -e "Focus on technical accuracy"
+
+# Enhancement with translation
+python3 convert.py -i spanish_audio.mp3 -o ./output/ -tr en -e
+```
+
+**Standalone Enhancement:**
+You can also enhance existing transcripts using `enhance.py` directly:
+```bash
+python3 enhance.py -i transcript.md -o enhanced.md -v
+python3 enhance.py -i transcript.md -o enhanced.md -tr es
+```
+
+**Rate Limits:** Free tier supports 5 requests per minute. The tool handles rate limiting automatically.
 
 ## Notes
 

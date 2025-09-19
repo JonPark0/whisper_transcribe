@@ -7,6 +7,7 @@ import glob
 import time
 from pathlib import Path
 import signal
+import subprocess
 from typing import List
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
@@ -228,6 +229,39 @@ def is_audio_file(file_path: str) -> bool:
     audio_extensions = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma'}
     return Path(file_path).suffix.lower() in audio_extensions
 
+def enhance_file(audio_file: str, output_dir: str, custom_prompt: str, verbose: bool, translate: str):
+    """Run enhancement on the generated transcript"""
+    # Get the generated markdown file path
+    audio_name = Path(audio_file).stem
+    markdown_file = Path(output_dir) / f"{audio_name}.md"
+    enhanced_file = Path(output_dir) / f"{audio_name}_enhanced.md"
+
+    # Check if the enhance.py script exists
+    enhance_script = Path(__file__).parent / "enhance.py"
+    if not enhance_script.exists():
+        raise Exception("enhance.py script not found in the same directory")
+
+    # Build the command
+    cmd = [sys.executable, str(enhance_script), "-i", str(markdown_file), "-o", str(enhanced_file)]
+
+    if verbose:
+        cmd.append("-v")
+
+    if translate:
+        cmd.extend(["-tr", translate])
+
+    if custom_prompt:
+        cmd.extend(["-p", custom_prompt])
+
+    # Execute the enhancement
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if verbose:
+            print(result.stdout)
+        print(f"📄 Enhanced transcript saved: {enhanced_file}")
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Enhancement process failed: {e.stderr}")
+
 def main():
     parser = argparse.ArgumentParser(
         description="Transcribe audio files using OpenAI Whisper large-v3 model",
@@ -242,6 +276,8 @@ Examples:
   python3 convert.py -i *.wav -o ./output/ -ch -ts -v
   python3 convert.py -i audio.mp3 -o ./output/ -tr en -ts -v
   python3 convert.py -i spanish_audio.mp3 -o ./output/ -tr en --flash-attn
+  python3 convert.py -i audio.mp3 -o ./output/ -ts -e
+  python3 convert.py -i audio.mp3 -o ./output/ -e "Focus on technical terms"
         """
     )
     
@@ -261,6 +297,8 @@ Examples:
                        help='Enable Flash Attention 2 for faster processing on compatible GPUs.')
     parser.add_argument('-tr', '--translate', type=str, metavar='LANGUAGE',
                        help='Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr").')
+    parser.add_argument('-e', '--enhance', nargs='?', const='', type=str, metavar='PROMPT',
+                       help='Automatically execute enhancement process using Gemini API. Optional additional prompt can be provided.')
     
     args = parser.parse_args()
     
@@ -312,9 +350,17 @@ Examples:
             transcriber.save_transcript(transcript, audio_file, args.output)
             processed_files += 1
             processing_times.append(processing_time)
-            
+
             print(f"✅ Completed in {format_duration(processing_time)}")
-            
+
+            # Run enhancement if requested
+            if args.enhance is not None:
+                try:
+                    print("🔧 Running enhancement...")
+                    enhance_file(audio_file, args.output, args.enhance, args.verbose, args.translate)
+                except Exception as e:
+                    print(f"⚠️  Enhancement failed: {str(e)}")
+
             if args.timeout:
                 signal.alarm(0)
                 
