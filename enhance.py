@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 import google.generativeai as genai
 from typing import Optional
+from dotenv import load_dotenv
 
 class TranscriptEnhancer:
     def __init__(self, verbose: bool = False, target_language: str = None):
@@ -223,10 +224,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Single file
   python3 enhance.py -i transcript.md -o enhanced.md
-  python3 enhance.py -i transcript.md -o enhanced.md -v
-  python3 enhance.py -i transcript.md -o enhanced.md -tr es
-  python3 enhance.py -i transcript.md -o enhanced.md -v -tr fr
+  python3 enhance.py -i transcript.md -o enhanced.md -v -tr es
+
+  # Multiple files (batch processing)
+  python3 enhance.py -i *.md -o enhanced/ -v
+  python3 enhance.py -i file1.md file2.md file3.md -o output_dir/ -tr en
 
 Requirements:
   - Google AI API key (set as GEMINI_API_KEY environment variable)
@@ -234,10 +238,10 @@ Requirements:
         """
     )
 
-    parser.add_argument('-i', '--input', required=True,
-                       help='Input markdown file path.')
+    parser.add_argument('-i', '--input', nargs='+', required=True,
+                       help='Input markdown file path(s). Supports multiple files.')
     parser.add_argument('-o', '--output', required=True,
-                       help='Output markdown file path.')
+                       help='Output directory path for enhanced files (when multiple inputs) or output file path (when single input).')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='Enable verbose output to see processing details.')
     parser.add_argument('-tr', '--translate', type=str, metavar='LANGUAGE',
@@ -247,17 +251,49 @@ Requirements:
 
     args = parser.parse_args()
 
-    # Check if input file exists
-    if not os.path.isfile(args.input):
-        print(f"Error: Input file '{args.input}' not found.")
-        sys.exit(1)
+    # Validate input files
+    input_files = []
+    for input_path in args.input:
+        if os.path.isfile(input_path):
+            input_files.append(input_path)
+        else:
+            print(f"Error: Input file '{input_path}' not found.")
+            sys.exit(1)
+
+    # Determine if processing single file or multiple files
+    is_batch = len(input_files) > 1
+
+    # Validate output path
+    if is_batch:
+        # Multiple inputs: output should be a directory
+        output_dir = args.output
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"Created output directory: {output_dir}")
+        elif not os.path.isdir(output_dir):
+            print(f"Error: For multiple inputs, output must be a directory: {output_dir}")
+            sys.exit(1)
+    else:
+        # Single input: output can be a file
+        output_file = args.output
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+    # Load environment variables from .env file in project directory
+    load_dotenv()
+
+    # Suppress Google Cloud warnings when running locally
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = ''
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
     # Get API key from environment
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set.")
-        print("Please set your Google AI API key:")
-        print("export GEMINI_API_KEY='your-api-key-here'")
+        print("Error: GEMINI_API_KEY not found.")
+        print("Please set your Google AI API key either:")
+        print("1. Create a .env file in the project directory with: GEMINI_API_KEY=your-api-key-here")
+        print("2. Or export as environment variable: export GEMINI_API_KEY='your-api-key-here'")
         sys.exit(1)
 
     # Create enhancer
@@ -269,25 +305,75 @@ Requirements:
         # Setup Gemini API
         enhancer.setup_gemini(api_key)
 
-        # Enhance the transcript
-        enhanced_content = enhancer.enhance_transcript(
-            input_file=args.input,
-            output_file=args.output,
-            custom_prompt=args.prompt
-        )
+        if is_batch:
+            print(f"Processing {len(input_files)} files in batch mode...")
+            enhanced_contents = []
 
-        total_time = time.time() - total_start_time
+            for i, input_file in enumerate(input_files, 1):
+                print(f"\n[{i}/{len(input_files)}] Processing: {Path(input_file).name}")
 
-        print(f"\n{'='*50}")
-        print(f"✅ Enhancement Complete")
-        print(f"{'='*50}")
-        print(f"📄 Input: {args.input}")
-        print(f"📄 Output: {args.output}")
-        print(f"⏱️  Total time: {format_duration(total_time)}")
-        if args.translate:
-            print(f"🌍 Target language: {args.translate}")
-        print(f"📊 Character count: {len(enhanced_content):,}")
-        print(f"{'='*50}")
+                # Generate output filename
+                input_name = Path(input_file).stem
+                output_file = Path(output_dir) / f"{input_name}_enhanced.md"
+
+                try:
+                    # Enhance the transcript
+                    enhanced_content = enhancer.enhance_transcript(
+                        input_file=input_file,
+                        output_file=str(output_file),
+                        custom_prompt=args.prompt
+                    )
+                    enhanced_contents.append(enhanced_content)
+                    print(f"✅ Saved: {output_file}")
+
+                    # Rate limiting between files
+                    if i < len(input_files):
+                        print("⏳ Waiting 30 seconds before next file (rate limiting)...")
+                        time.sleep(30)
+
+                except Exception as e:
+                    print(f"❌ Error processing {input_file}: {str(e)}")
+                    continue
+
+            total_time = time.time() - total_start_time
+            successful_files = len(enhanced_contents)
+
+            print(f"\n{'='*50}")
+            print(f"✅ Batch Enhancement Complete")
+            print(f"{'='*50}")
+            print(f"📁 Input files: {len(input_files)}")
+            print(f"✅ Successfully processed: {successful_files}")
+            print(f"❌ Failed: {len(input_files) - successful_files}")
+            print(f"📁 Output directory: {output_dir}")
+            print(f"⏱️  Total time: {format_duration(total_time)}")
+            if args.translate:
+                print(f"🌍 Target language: {args.translate}")
+            print(f"{'='*50}")
+
+        else:
+            # Single file processing
+            input_file = input_files[0]
+            output_file = args.output
+
+            # Enhance the transcript
+            enhanced_content = enhancer.enhance_transcript(
+                input_file=input_file,
+                output_file=output_file,
+                custom_prompt=args.prompt
+            )
+
+            total_time = time.time() - total_start_time
+
+            print(f"\n{'='*50}")
+            print(f"✅ Enhancement Complete")
+            print(f"{'='*50}")
+            print(f"📄 Input: {input_file}")
+            print(f"📄 Output: {output_file}")
+            print(f"⏱️  Total time: {format_duration(total_time)}")
+            if args.translate:
+                print(f"🌍 Target language: {args.translate}")
+            print(f"📊 Character count: {len(enhanced_content):,}")
+            print(f"{'='*50}")
 
     except KeyboardInterrupt:
         print("\nEnhancement interrupted by user.")
