@@ -11,6 +11,5 @@ venv
 .env
 
 # AI Related Files
-CLAUDE.md
-AGENTS.md
-GEMINI.md
+*.md
+!README.md
