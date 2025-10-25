@@ -1,15 +1,44 @@
-# Ignore Directory used for Dev
-audio
-chat
-result
-enhanced
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
-# Python Virtual Environment
-venv
+# Virtual Environment
+venv/
+env/
+ENV/
 
-# Environment Variable File
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Environment Variables
 .env
+.env.local
 
-# AI Related Files
+# Development Directories
+audio/
+chat/
+result/
+enhanced/
+output/
+
+# AI Generated Files
 *.md
 !README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
