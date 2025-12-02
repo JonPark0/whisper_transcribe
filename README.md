@@ -1,10 +1,10 @@
 # Whisper Transcriber
 
-A Python tool that transcribes audio files using OpenAI's Whisper large-v3 model. Supports multiple file formats and includes timestamp functionality.
+A Python tool that transcribes audio files using OpenAI's Whisper large-v3-turbo model. Supports multiple file formats, timestamp functionality, and AI-powered transcript enhancement.
 
 ## Features
 
-- Uses OpenAI's Whisper large-v3 model for high-quality transcription
+- Uses OpenAI's Whisper large-v3-turbo model for high-quality transcription
 - Supports multiple audio formats (MP3, WAV, FLAC, AAC, OGG, M4A, WMA)
 - Multilingual transcription support
 - Optional timestamp generation
@@ -78,11 +78,14 @@ python3 convert.py -i lecture.mp3 -o ./output/ -e "Focus on technical terms and 
 ### Optional Parameters
 - `-ts`, `--timestamp`: Enable timestamp feature in transcription
 - `-v`, `--verbose`: Enable verbose output to see processing details
-- `-to`, `--timeout`: Set timeout in seconds for each file processing
+- `-to`, `--timeout`: Set timeout in seconds for each file processing (Note: Not supported on Windows)
 - `-ch`, `--chunked`: Enable chunked long-form processing with specified chunk length in seconds (default: 30)
 - `--flash-attn`: Enable Flash Attention 2 for faster processing on compatible GPUs
 - `-tr`, `--translate`: Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr")
 - `-e`, `--enhance`: Automatically execute enhancement process using Gemini API. Optional custom prompt can be provided
+- `--json`: Output transcription in JSON format instead of Markdown
+- `--start`: Start time in seconds for audio segment selection
+- `--end`: End time in seconds for audio segment selection
 
 ## Output
 
@@ -154,16 +157,29 @@ Flash Attention 2 provides significant performance improvements for GPU processi
 - CUDA >= 12.3 (recommended: CUDA 12.8)
 - AMD GPUs: MI200 or MI300 with ROCm 6.0+
 
-**Installation:**
+**Installation (Method 1: Using setup.py extras):**
 ```bash
-# Install core dependencies first
+# Recommended: Install with optional flash-attn extras
+pip install -e .[flash-attn]
+```
+
+**Installation (Method 2: Manual installation):**
+```bash
+# Step 1: Install core dependencies first (includes torch)
 pip install -r requirements.txt
 
-# Install Flash Attention 2 (requires --no-build-isolation)
+# Step 2: Install build tools
+pip install ninja psutil
+
+# Step 3: Install Flash Attention 2 (requires torch to be already installed)
 pip install flash-attn --no-build-isolation
 ```
 
-**Note:** Flash Attention 2 installation may take 5-10 minutes as it compiles from source. If installation fails, the tool will automatically fall back to standard attention.
+**Important Notes:**
+- Flash Attention 2 installation may take 5-10 minutes as it compiles from source
+- **torch must be installed before installing flash-attn** (flash-attn needs torch during build)
+- If installation fails, the tool will automatically fall back to standard attention
+- Not required for basic functionality - only provides performance optimization
 
 ### Transcript Enhancement with Gemini API (Optional)
 The enhancement feature uses Google's Gemini 2.0 Flash Experimental model to improve transcript quality:

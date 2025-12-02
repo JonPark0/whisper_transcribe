@@ -5,21 +5,31 @@ import os
 import sys
 import glob
 import time
-import signal
-import subprocess
+import platform
 from pathlib import Path
 from typing import List
+from dotenv import load_dotenv
 
 # Import from core modules
-from core import WhisperTranscriber, format_duration
+from core import WhisperTranscriber, TranscriptEnhancer, format_duration
 
 
+# Timeout exception (always defined for compatibility)
 class TimeoutException(Exception):
     pass
 
 
-def timeout_handler(signum, frame):
-    raise TimeoutException("Timeout occurred")
+# Platform-specific timeout handling
+TIMEOUT_SUPPORTED = False
+if platform.system() != 'Windows':
+    try:
+        import signal
+        TIMEOUT_SUPPORTED = True
+
+        def timeout_handler(signum, frame):
+            raise TimeoutException("Timeout occurred")
+    except (ImportError, AttributeError):
+        pass
 
 
 def expand_file_paths(input_paths: List[str]) -> List[str]:
@@ -48,37 +58,56 @@ def is_audio_file(file_path: str) -> bool:
 
 
 def enhance_file(audio_file: str, output_dir: str, custom_prompt: str, verbose: bool, translate: str):
-    """Run enhancement on the generated transcript."""
+    """Run enhancement on the generated transcript using the core library."""
     # Get the generated markdown file path
     audio_name = Path(audio_file).stem
     markdown_file = Path(output_dir) / f"{audio_name}.md"
     enhanced_file = Path(output_dir) / f"{audio_name}_enhanced.md"
 
-    # Check if the enhance.py script exists
-    enhance_script = Path(__file__).parent / "enhance.py"
-    if not enhance_script.exists():
-        raise Exception("enhance.py script not found in the same directory")
+    # Check if markdown file exists
+    if not markdown_file.exists():
+        raise Exception(f"Transcript file not found: {markdown_file}")
 
-    # Build the command
-    cmd = [sys.executable, str(enhance_script), "-i", str(markdown_file), "-o", str(enhanced_file)]
+    # Load environment variables
+    load_dotenv()
 
-    if verbose:
-        cmd.append("-v")
+    # Get API key from environment
+    api_key = os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        raise Exception(
+            "GEMINI_API_KEY not found. Please set your Google AI API key either:\n"
+            "1. Create a .env file with: GEMINI_API_KEY=your-api-key-here\n"
+            "2. Or export as environment variable: export GEMINI_API_KEY='your-api-key-here'"
+        )
 
-    if translate:
-        cmd.extend(["-tr", translate])
+    # Create enhancer
+    enhancer = TranscriptEnhancer(verbose=verbose, target_language=translate)
 
-    if custom_prompt:
-        cmd.extend(["-p", custom_prompt])
+    # Setup Gemini API
+    enhancer.setup_gemini(api_key)
 
-    # Execute the enhancement
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        if verbose:
-            print(result.stdout)
+    # Read the transcript
+    with open(markdown_file, 'r', encoding='utf-8') as f:
+        input_content = f.read()
+
+    # Enhance the transcript
+    result = enhancer.enhance_transcript(
+        input_content=input_content,
+        custom_prompt=custom_prompt if custom_prompt else None
+    )
+
+    if result['success']:
+        # Save enhanced content
+        enhancer.save_enhanced_transcript(
+            enhanced_text=result['enhanced_text'],
+            original_file=str(markdown_file),
+            output_file=str(enhanced_file),
+            processing_time=result['processing_time'],
+            output_tokens=result['output_tokens']
+        )
         print(f"📄 Enhanced transcript saved: {enhanced_file}")
-    except subprocess.CalledProcessError as e:
-        raise Exception(f"Enhancement process failed: {e.stderr}")
+    else:
+        raise Exception(f"Enhancement failed: {result['error']}")
 
 
 def main():
@@ -147,6 +176,11 @@ Examples:
         if args.verbose:
             print(f"Created output directory: {args.output}")
 
+    # Check timeout support
+    if args.timeout and not TIMEOUT_SUPPORTED:
+        print("Warning: Timeout feature is not supported on Windows. Timeout will be ignored.")
+        args.timeout = None
+
     # Set chunk length based on chunked parameter
     chunk_length = args.chunked if args.chunked is not None else 30
 
@@ -169,7 +203,7 @@ Examples:
         print(f"\n[{i}/{total_files}] Processing: {Path(audio_file).name}")
 
         try:
-            if args.timeout:
+            if args.timeout and TIMEOUT_SUPPORTED:
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(args.timeout)
 
@@ -202,7 +236,7 @@ Examples:
             else:
                 print(f"❌ Error: {result['error']}")
 
-            if args.timeout:
+            if args.timeout and TIMEOUT_SUPPORTED:
                 signal.alarm(0)
 
         except TimeoutException:
