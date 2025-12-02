@@ -37,10 +37,11 @@ setup(
     description="Audio transcription using OpenAI's Whisper large-v3-turbo model with optional Gemini enhancement",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="JonPark0",
+    author_email="jonpark0@users.noreply.github.com",
     url="https://github.com/JonPark0/whisper_transcribe",
     packages=find_packages(),
+    py_modules=['convert', 'enhance'],
     python_requires=">=3.8",
     install_requires=core_requirements,
     extras_require={

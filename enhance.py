@@ -76,9 +76,9 @@ Requirements:
     # Load environment variables from .env file in project directory
     load_dotenv()
 
-    # Suppress Google Cloud warnings when running locally
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = ''
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    # Suppress warnings (done through python warnings module instead of env modification)
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning, module='google')
 
     # Get API key from environment
     api_key = os.getenv('GEMINI_API_KEY')
@@ -134,10 +134,10 @@ Requirements:
                     else:
                         print(f"❌ Error: {result['error']}")
 
-                    # Rate limiting between files
+                    # Rate limiting between files (Gemini API: 5 requests/minute)
                     if i < len(input_files):
-                        print("⏳ Waiting 30 seconds before next file (rate limiting)...")
-                        time.sleep(30)
+                        print("⏳ Waiting 12 seconds before next file (rate limiting)...")
+                        time.sleep(12)
 
                 except Exception as e:
                     print(f"❌ Error processing {input_file}: {str(e)}")

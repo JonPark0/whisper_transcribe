@@ -3,7 +3,7 @@
 import time
 import json
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any, List
+from typing import Optional, Callable, Dict, Any, List, Tuple
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import librosa
@@ -119,7 +119,7 @@ class WhisperTranscriber:
         audio_path: str,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None
-    ) -> tuple[np.ndarray, float]:
+    ) -> Tuple[np.ndarray, float]:
         """
         Load audio file with optional segment selection.
 
@@ -314,7 +314,7 @@ class WhisperTranscriber:
                     start = timestamp[0] if timestamp[0] is not None else 0
                     end = timestamp[1] if timestamp[1] is not None else duration
 
-                    if start_time:
+                    if start_time is not None:
                         start += start_time
                         end += start_time
 

@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, Tuple
 import google.generativeai as genai
 
 
@@ -58,7 +58,7 @@ class TranscriptEnhancer:
         """
         return f"{tokens:,}"
 
-    def validate_input_size(self, content: str, prompt: str) -> tuple[bool, str]:
+    def validate_input_size(self, content: str, prompt: str) -> Tuple[bool, str]:
         """
         Validate if input content + prompt fits within token limits.
 
@@ -106,7 +106,7 @@ class TranscriptEnhancer:
         # due to improved grammar, structure, and formatting
         return int(input_tokens * 1.3)
 
-    def validate_output_capacity(self, input_tokens: int) -> tuple[bool, str]:
+    def validate_output_capacity(self, input_tokens: int) -> Tuple[bool, str]:
         """
         Check if estimated output will fit within output token limits.
 
