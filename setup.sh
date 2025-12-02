@@ -13,9 +13,11 @@ pip install --upgrade pip
 echo "Installing core requirements..."
 pip install -r requirements.txt
 
-echo "Installing Flash Attention 2 (optional, for GPU acceleration)..."
-echo "This may take 5-10 minutes to compile..."
-pip install flash-attn --no-build-isolation || echo "Flash Attention 2 installation failed - continuing without it"
+echo ""
+echo "Flash Attention 2 is optional and can be installed separately for GPU acceleration."
+echo "To install: pip install ninja psutil && pip install flash-attn --no-build-isolation"
+echo "Note: This requires a compatible GPU and may take 5-10 minutes to compile."
+echo ""
 
 echo ""
 echo "Setup complete!"

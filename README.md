@@ -157,16 +157,29 @@ Flash Attention 2 provides significant performance improvements for GPU processi
 - CUDA >= 12.3 (recommended: CUDA 12.8)
 - AMD GPUs: MI200 or MI300 with ROCm 6.0+
 
-**Installation:**
+**Installation (Method 1: Using setup.py extras):**
 ```bash
-# Install core dependencies first
+# Recommended: Install with optional flash-attn extras
+pip install -e .[flash-attn]
+```
+
+**Installation (Method 2: Manual installation):**
+```bash
+# Step 1: Install core dependencies first (includes torch)
 pip install -r requirements.txt
 
-# Install Flash Attention 2 (requires --no-build-isolation)
+# Step 2: Install build tools
+pip install ninja psutil
+
+# Step 3: Install Flash Attention 2 (requires torch to be already installed)
 pip install flash-attn --no-build-isolation
 ```
 
-**Note:** Flash Attention 2 installation may take 5-10 minutes as it compiles from source. If installation fails, the tool will automatically fall back to standard attention.
+**Important Notes:**
+- Flash Attention 2 installation may take 5-10 minutes as it compiles from source
+- **torch must be installed before installing flash-attn** (flash-attn needs torch during build)
+- If installation fails, the tool will automatically fall back to standard attention
+- Not required for basic functionality - only provides performance optimization
 
 ### Transcript Enhancement with Gemini API (Optional)
 The enhancement feature uses Google's Gemini 2.0 Flash Experimental model to improve transcript quality:
