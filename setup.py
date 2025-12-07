@@ -11,7 +11,7 @@ long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists
 # Core dependencies (required)
 core_requirements = [
     "torch>=2.2.0",
-    "transformers>=4.52.0",
+    "transformers>=4.46.0",
     "librosa>=0.10.0",
     "ffmpeg-python>=0.2.0",
     "soundfile>=0.12.0",
