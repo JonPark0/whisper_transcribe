@@ -60,7 +60,7 @@ python3 convert.py -i audio.mp3 -o ./output/ -ts -e
 
 ## System Requirements
 
-- Python 3.8 or higher
+- Python 3.9 or higher
 - CUDA-compatible GPU (optional, for faster processing)
 - Sufficient disk space for model downloads (~3GB for Whisper large-v3)
 

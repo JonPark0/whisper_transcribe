@@ -42,7 +42,7 @@ setup(
     url="https://github.com/JonPark0/whisper_transcribe",
     packages=find_packages(),
     py_modules=['convert', 'enhance'],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=core_requirements,
     extras_require={
         "flash-attn": flash_attn_requirements,
@@ -61,7 +61,6 @@ setup(
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",

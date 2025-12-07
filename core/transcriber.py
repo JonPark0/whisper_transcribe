@@ -141,7 +141,7 @@ class WhisperTranscriber:
             try:
                 self.log("Trying pydub for audio loading...")
                 audio_segment = AudioSegment.from_file(audio_path)
-                original_duration = len(audio_segment) / 1000.0  # milliseconds to seconds
+                original_duration = float(len(audio_segment) / 1000.0)  # milliseconds to seconds
 
                 # Apply segment selection if specified
                 if start_time is not None or end_time is not None:
@@ -291,6 +291,9 @@ class WhisperTranscriber:
             self.log("Using pipeline with chunking for long-form transcription")
 
             # Use the pipeline which handles long-form audio properly
+            if self.pipe is None:
+                raise RuntimeError("Transcriber pipeline is not initialized. Call load_model() first.")
+
             pipe_result = self.pipe(audio)
 
             # Stage 3: Processing results
