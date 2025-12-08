@@ -6,7 +6,7 @@ This README provides a basic overview. For detailed instructions, please see the
 
 ## Related Projects
 
-- **[whisper_webui](../whisper_webui/):** A web-based user interface for `whisper_transcribe`, allowing you to manage transcription jobs easily through a browser.
+- **[whisper_webui](https://github.com/JonPark0/whisper_webui):** A web-based user interface for `whisper_transcribe`, allowing you to manage transcription jobs easily through a browser.
 
 ---
 
