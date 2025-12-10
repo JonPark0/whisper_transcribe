@@ -25,6 +25,10 @@ Examples:
   python3 enhance.py -i *.md -o enhanced/ -v
   python3 enhance.py -i file1.md file2.md file3.md -o output_dir/ -tr en
 
+  # Using different models
+  python3 enhance.py -i transcript.md -o enhanced.md -m gemini-2.5-flash
+  python3 enhance.py -i transcript.md -o enhanced.md -m gemini-1.5-pro
+
 Requirements:
   - Google AI API key (set as GEMINI_API_KEY environment variable)
   - Install: pip install google-generativeai
@@ -41,6 +45,8 @@ Requirements:
                        help='Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr").')
     parser.add_argument('-p', '--prompt', type=str,
                        help='Custom enhancement prompt (replaces default prompt).')
+    parser.add_argument('-m', '--model', type=str, default='gemini-2.5-flash',
+                       help='Gemini model to use (default: gemini-2.5-flash). Examples: gemini-2.5-flash, gemini-2.0-flash-exp, gemini-1.5-pro')
 
     args = parser.parse_args()
 
@@ -90,7 +96,7 @@ Requirements:
         sys.exit(1)
 
     # Create enhancer
-    enhancer = TranscriptEnhancer(verbose=args.verbose, target_language=args.translate)
+    enhancer = TranscriptEnhancer(verbose=args.verbose, target_language=args.translate, model_name=args.model)
 
     try:
         total_start_time = time.time()

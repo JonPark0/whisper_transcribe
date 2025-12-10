@@ -182,7 +182,7 @@ pip install flash-attn --no-build-isolation
 - Not required for basic functionality - only provides performance optimization
 
 ### Transcript Enhancement with Gemini API (Optional)
-The enhancement feature uses Google's Gemini 2.0 Flash Experimental model to improve transcript quality:
+The enhancement feature uses Google's Gemini API to improve transcript quality:
 
 **Setup:**
 1. Get a Google AI API key from [Google AI Studio](https://aistudio.google.com/)
@@ -203,9 +203,15 @@ The enhancement feature uses Google's Gemini 2.0 Flash Experimental model to imp
 - Better formatting with headings and structure
 - Optional translation to target language
 
+**Available Models:**
+You can choose from different Gemini models based on your needs:
+- `gemini-2.5-flash` (default) - Free tier available, fast processing, limited requests
+- `gemini-2.5-flash-lite` - Free tier available, faster and lighter, limited requests
+- `gemini-2.5-pro` - Paid tier, highest quality, no rate limits
+
 **Usage:**
 ```bash
-# Basic enhancement
+# Basic enhancement (uses gemini-2.5-flash by default)
 python3 convert.py -i audio.mp3 -o ./output/ -e
 
 # Enhancement with custom prompt
@@ -216,13 +222,27 @@ python3 convert.py -i spanish_audio.mp3 -o ./output/ -tr en -e
 ```
 
 **Standalone Enhancement:**
-You can also enhance existing transcripts using `enhance.py` directly:
+You can also enhance existing transcripts using `enhance.py` directly with model selection:
 ```bash
+# Basic enhancement with default model
 python3 enhance.py -i transcript.md -o enhanced.md -v
+
+# Enhancement with translation
 python3 enhance.py -i transcript.md -o enhanced.md -tr es
+
+# Using specific Gemini models
+python3 enhance.py -i transcript.md -o enhanced.md -m gemini-2.5-flash
+python3 enhance.py -i transcript.md -o enhanced.md -m gemini-2.5-flash-lite
+python3 enhance.py -i transcript.md -o enhanced.md -m gemini-2.5-pro
+
+# Batch processing with specific model
+python3 enhance.py -i *.md -o enhanced/ -m gemini-2.5-pro -v
 ```
 
-**Rate Limits:** Free tier supports 5 requests per minute. The tool handles rate limiting automatically.
+**Rate Limits:**
+- Free tier (gemini-2.5-flash, gemini-2.5-flash-lite): 5 requests per minute
+- Paid tier (gemini-2.5-pro): Higher rate limits based on your plan
+- The tool handles rate limiting automatically for batch processing
 
 ## Notes
 
