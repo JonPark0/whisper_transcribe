@@ -260,6 +260,9 @@ Please provide the enhanced transcript:"""
 
             self.log("✅ Token validation passed. Sending to Gemini for enhancement...")
 
+            if self.model is None:
+                raise RuntimeError("Gemini model is not initialized. Call setup_gemini() first.")
+
             # Generate enhanced content
             response = self.model.generate_content(
                 prompt,
