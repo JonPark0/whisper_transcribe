@@ -13,16 +13,18 @@ class TranscriptEnhancer:
     This class can be used as a library (with progress callbacks) or through CLI.
     """
 
-    def __init__(self, verbose: bool = False, target_language: Optional[str] = None):
+    def __init__(self, verbose: bool = False, target_language: Optional[str] = None, model_name: str = "gemini-2.5-flash"):
         """
         Initialize TranscriptEnhancer.
 
         Args:
             verbose: Enable detailed logging
             target_language: Target language for translation (ISO 639-1 code)
+            model_name: Gemini model name to use (default: gemini-2.5-flash)
         """
         self.verbose = verbose
         self.target_language = target_language
+        self.model_name = model_name
         self.model = None
 
         # Gemini 2.5 Pro token limits
@@ -147,8 +149,8 @@ class TranscriptEnhancer:
         """
         try:
             genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-2.5-pro')
-            self.log("Gemini 2.5 Pro API configured successfully")
+            self.model = genai.GenerativeModel(self.model_name)
+            self.log(f"Gemini API configured successfully with model: {self.model_name}")
         except Exception as e:
             raise Exception(f"Failed to configure Gemini API: {str(e)}")
 
@@ -348,7 +350,7 @@ Please provide the enhanced transcript:"""
 **Original File:** {Path(original_file).name}
 **Enhanced:** {time.strftime('%Y-%m-%d %H:%M:%S')}
 **Processing Time:** {processing_time:.1f}s
-**Model:** Gemini 2.5 Pro
+**Model:** {self.model_name}
 **Output Tokens:** {self.format_token_count(output_tokens)}
 {'**Target Language:** ' + self.target_language if self.target_language else ''}
 
