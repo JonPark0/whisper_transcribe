@@ -3,7 +3,7 @@
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable, Tuple
-import google.generativeai as genai
+from google import genai
 
 
 class TranscriptEnhancer:
@@ -13,19 +13,19 @@ class TranscriptEnhancer:
     This class can be used as a library (with progress callbacks) or through CLI.
     """
 
-    def __init__(self, verbose: bool = False, target_language: Optional[str] = None, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, verbose: bool = False, target_language: Optional[str] = None, model_name: str = "gemini-flash-latest"):
         """
         Initialize TranscriptEnhancer.
 
         Args:
             verbose: Enable detailed logging
             target_language: Target language for translation (ISO 639-1 code)
-            model_name: Gemini model name to use (default: gemini-2.5-flash)
+            model_name: Gemini model name to use (default: gemini-flash-latest)
         """
         self.verbose = verbose
         self.target_language = target_language
         self.model_name = model_name
-        self.model = None
+        self._client = None
 
         # Gemini 2.5 Pro token limits
         self.MAX_INPUT_TOKENS = 1_048_576  # ~4.2M characters
@@ -148,8 +148,7 @@ class TranscriptEnhancer:
             Exception: If API configuration fails
         """
         try:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(self.model_name)
+            self._client = genai.Client(api_key=api_key)
             self.log(f"Gemini API configured successfully with model: {self.model_name}")
         except Exception as e:
             raise Exception(f"Failed to configure Gemini API: {str(e)}")
@@ -260,13 +259,14 @@ Please provide the enhanced transcript:"""
 
             self.log("✅ Token validation passed. Sending to Gemini for enhancement...")
 
-            if self.model is None:
-                raise RuntimeError("Gemini model is not initialized. Call setup_gemini() first.")
+            if self._client is None:
+                raise RuntimeError("Gemini client is not initialized. Call setup_gemini() first.")
 
             # Generate enhanced content
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
+            response = self._client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
                     temperature=0.1,  # Low temperature for consistent, factual enhancement
                     max_output_tokens=self.MAX_OUTPUT_TOKENS,  # Use configured limit
                 )

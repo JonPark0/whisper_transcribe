@@ -12,7 +12,7 @@ class TestTranscriptEnhancer:
         enhancer = TranscriptEnhancer()
         assert enhancer.verbose is False
         assert enhancer.target_language is None
-        assert enhancer.model is None
+        assert enhancer._client is None
         assert enhancer.MAX_INPUT_TOKENS == 1_048_576
         assert enhancer.MAX_OUTPUT_TOKENS == 65_536
 
