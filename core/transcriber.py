@@ -29,6 +29,7 @@ class WhisperTranscriber:
         self,
         verbose: bool = False,
         chunk_length: int = 30,
+        batch_size: int = 4,
         use_flash_attn: bool = False,
         target_language: Optional[str] = None
     ):
@@ -38,11 +39,14 @@ class WhisperTranscriber:
         Args:
             verbose: Enable detailed logging
             chunk_length: Length of audio chunks in seconds (default: 30)
+            batch_size: Number of audio chunks to process simultaneously (default: 4).
+                        Lower values reduce VRAM usage at the cost of speed.
             use_flash_attn: Enable Flash Attention 2 for faster GPU processing
             target_language: Target language for translation (ISO 639-1 code)
         """
         self.verbose = verbose
         self.chunk_length = chunk_length
+        self.batch_size = batch_size
         self.use_flash_attn = use_flash_attn
         self.target_language = target_language
         self.model = None
@@ -107,7 +111,7 @@ class WhisperTranscriber:
             tokenizer=self.processor.tokenizer,
             feature_extractor=self.processor.feature_extractor,
             chunk_length_s=self.chunk_length,
-            batch_size=16,
+            batch_size=self.batch_size,
             return_timestamps=True,
             device=device,
             generate_kwargs=generation_config
