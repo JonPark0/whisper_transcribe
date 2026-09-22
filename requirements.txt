@@ -13,3 +13,9 @@ python-dotenv>=1.0.0
 # Note: Flash Attention 2 and build tools (ninja, psutil, flash-attn) are optional
 # Install with: pip install whisper-transcribe[flash-attn]
 # Or: pip install -r requirements.txt && pip install flash-attn --no-build-isolation
+
+# Note: the faster-whisper (CTranslate2) engine is optional - same model
+# weights, ~20x faster runtime, built-in VAD/hallucination filtering.
+# Install with: pip install whisper-transcribe[faster-whisper]
+# On a CUDA 13 host you also need: pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+# and LD_LIBRARY_PATH pointed at their lib/ dirs (see core/faster_transcriber.py).

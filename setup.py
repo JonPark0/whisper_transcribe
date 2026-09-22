@@ -25,6 +25,15 @@ flash_attn_requirements = [
     "flash-attn>=2.7.4",
 ]
 
+# Optional dependencies for the faster-whisper (CTranslate2) engine.
+# Same model weights as the default transformers engine, different runtime -
+# see core/faster_transcriber.py. CTranslate2's wheel needs CUDA 12 runtime
+# libs even on a CUDA 13 host; on such a host also install nvidia-cublas-cu12
+# and nvidia-cudnn-cu12 and prepend their lib/ dirs to LD_LIBRARY_PATH.
+faster_whisper_requirements = [
+    "faster-whisper>=1.0.0",
+]
+
 # Optional dependencies for enhancement
 enhancement_requirements = [
     "google-generativeai>=0.8.0",
@@ -46,8 +55,9 @@ setup(
     install_requires=core_requirements,
     extras_require={
         "flash-attn": flash_attn_requirements,
+        "faster-whisper": faster_whisper_requirements,
         "enhancement": enhancement_requirements,
-        "all": flash_attn_requirements + enhancement_requirements,
+        "all": flash_attn_requirements + faster_whisper_requirements + enhancement_requirements,
     },
     entry_points={
         "console_scripts": [

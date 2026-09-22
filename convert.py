@@ -144,7 +144,15 @@ Examples:
     parser.add_argument('-ch', '--chunked', nargs='?', const=30, type=int,
                        help='Enable chunked long-form processing with specified chunk length in seconds (default: 30).')
     parser.add_argument('--flash-attn', action='store_true',
-                       help='Enable Flash Attention 2 for faster processing on compatible GPUs.')
+                       help='Enable Flash Attention 2 for faster processing on compatible GPUs (transformers engine only).')
+    parser.add_argument('--engine', choices=['transformers', 'faster'], default='transformers',
+                       help='Transcription engine: "transformers" (default, this package\'s original HF '
+                            'pipeline) or "faster" (faster-whisper/CTranslate2 - same model weights, '
+                            '~20x faster, needs the [faster-whisper] extra installed).')
+    parser.add_argument('-lang', '--language', type=str, metavar='LANGUAGE',
+                       help='Force recognition language (ISO 639-1 code, e.g. "ko", "en"). '
+                            'Default: auto-detect. Distinct from --translate, which triggers translation '
+                            'instead of transcription.')
     parser.add_argument('-tr', '--translate', type=str, metavar='LANGUAGE',
                        help='Set target language for translation using ISO 639-1 two-letter codes (e.g., "en", "es", "fr").')
     parser.add_argument('-e', '--enhance', nargs='?', const='', type=str, metavar='PROMPT',
@@ -184,12 +192,29 @@ Examples:
     # Set chunk length based on chunked parameter
     chunk_length = args.chunked if args.chunked is not None else 30
 
-    transcriber = WhisperTranscriber(
-        verbose=args.verbose,
-        chunk_length=chunk_length,
-        use_flash_attn=args.flash_attn,
-        target_language=args.translate
-    )
+    if args.engine == 'faster':
+        try:
+            from core import FasterWhisperTranscriber
+        except ImportError:
+            print(
+                "Error: --engine faster requires the faster-whisper extra.\n"
+                "Install it with: pip install -e .[faster-whisper]"
+            )
+            sys.exit(1)
+        transcriber = FasterWhisperTranscriber(
+            verbose=args.verbose,
+            chunk_length=chunk_length,
+            language=args.language,
+            target_language=args.translate
+        )
+    else:
+        transcriber = WhisperTranscriber(
+            verbose=args.verbose,
+            chunk_length=chunk_length,
+            use_flash_attn=args.flash_attn,
+            language=args.language,
+            target_language=args.translate
+        )
     transcriber.load_model()
 
     total_files = len(audio_files)

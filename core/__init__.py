@@ -16,3 +16,12 @@ __all__ = [
     'format_timestamp',
     'validate_file_path',
 ]
+
+# FasterWhisperTranscriber depends on the optional faster-whisper extra
+# (pip install -e .[faster-whisper]); importing it eagerly would break
+# `import core` for anyone who hasn't installed that extra.
+try:
+    from .faster_transcriber import FasterWhisperTranscriber
+    __all__.append('FasterWhisperTranscriber')
+except ImportError:
+    pass

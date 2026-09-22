@@ -1,21 +1,12 @@
 """Core transcription module with API and progress tracking support."""
 
 import time
-import json
-from pathlib import Path
-from typing import Optional, Callable, Dict, Any, List, Tuple
+from typing import Optional, Callable, Dict, Any, List, Tuple, Union
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-import librosa
 import numpy as np
 
-try:
-    from pydub import AudioSegment
-    HAS_PYDUB = True
-except ImportError:
-    HAS_PYDUB = False
-
-from .utils import format_timestamp
+from .utils import format_timestamp, load_audio_segment, save_transcript
 
 
 class WhisperTranscriber:
@@ -29,9 +20,15 @@ class WhisperTranscriber:
         self,
         verbose: bool = False,
         chunk_length: int = 30,
-        batch_size: int = 4,
+        batch_size: int = 16,
         use_flash_attn: bool = False,
-        target_language: Optional[str] = None
+        target_language: Optional[str] = None,
+        model_id: str = "openai/whisper-large-v3-turbo",
+        language: Optional[str] = None,
+        temperature: Union[float, Tuple[float, ...]] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+        compression_ratio_threshold: Optional[float] = 1.35,
+        logprob_threshold: Optional[float] = -1.0,
+        no_speech_threshold: Optional[float] = 0.6
     ):
         """
         Initialize WhisperTranscriber.
@@ -39,16 +36,53 @@ class WhisperTranscriber:
         Args:
             verbose: Enable detailed logging
             chunk_length: Length of audio chunks in seconds (default: 30)
-            batch_size: Number of audio chunks to process simultaneously (default: 4).
+            batch_size: Number of audio chunks to process simultaneously (default: 16).
                         Lower values reduce VRAM usage at the cost of speed.
             use_flash_attn: Enable Flash Attention 2 for faster GPU processing
             target_language: Target language for translation (ISO 639-1 code)
+            model_id: HuggingFace repo id for the Whisper model
+            language: Force recognition language (e.g. "korean", "english").
+                      None = Whisper auto-detects. Distinct from target_language,
+                      which triggers translation instead of transcription.
+            temperature: Temperature(s) for the decoding fallback ladder. When a
+                         segment fails compression_ratio_threshold or
+                         logprob_threshold, transformers retries it at the next
+                         temperature in this sequence. Pass a single float to
+                         disable fallback (one decode attempt only).
+            compression_ratio_threshold: Segments whose gzip compression ratio
+                         exceeds this are treated as repetitive/low-quality and
+                         trigger a temperature-fallback retry. None disables the
+                         check. Typical value: 1.35.
+            logprob_threshold: Segments whose average log-probability falls
+                         below this trigger a temperature-fallback retry. None
+                         disables the check. Typical value: -1.0.
+            no_speech_threshold: When the "no speech" token probability exceeds
+                         this AND logprob_threshold is also failed, the segment
+                         is treated as silence/noise and its text is discarded
+                         instead of retried. Requires logprob_threshold to be
+                         set (see __init__ guard below). Typical value: 0.6.
         """
+        if no_speech_threshold is not None and logprob_threshold is None:
+            raise ValueError(
+                "no_speech_threshold requires logprob_threshold to also be set: "
+                "transformers' Whisper generation only reads the no-speech "
+                "probability inside the logprob_threshold fallback branch "
+                "(models/whisper/generation_whisper.py:_need_fallback); leaving "
+                "logprob_threshold=None while setting no_speech_threshold raises "
+                "an UnboundLocalError on the first low-confidence segment."
+            )
+
         self.verbose = verbose
         self.chunk_length = chunk_length
         self.batch_size = batch_size
         self.use_flash_attn = use_flash_attn
         self.target_language = target_language
+        self.model_id = model_id
+        self.language = language
+        self.temperature = temperature
+        self.compression_ratio_threshold = compression_ratio_threshold
+        self.logprob_threshold = logprob_threshold
+        self.no_speech_threshold = no_speech_threshold
         self.model = None
         self.processor = None
         self.pipe = None
@@ -66,13 +100,16 @@ class WhisperTranscriber:
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-        model_id = "openai/whisper-large-v3-turbo"
+        model_id = self.model_id
 
-        # Prepare model loading arguments
+        # Prepare model loading arguments. Default to SDPA attention explicitly
+        # so the implementation does not silently change with transformers
+        # versions; flash_attention_2 overrides it when requested.
         model_kwargs = {
             "dtype": dtype,
             "low_cpu_mem_usage": True,
-            "use_safetensors": True
+            "use_safetensors": True,
+            "attn_implementation": "sdpa"
         }
 
         # Add flash attention support if requested and available
@@ -103,6 +140,28 @@ class WhisperTranscriber:
             generation_config["language"] = self.target_language
             generation_config["task"] = "translate"
             self.log(f"Translation enabled: translating to {self.target_language}")
+        elif self.language:
+            generation_config["language"] = self.language
+            generation_config["task"] = "transcribe"
+            self.log(f"Recognition language forced to {self.language}")
+
+        # Decoding-robustness knobs (temperature fallback ladder + hallucination
+        # filtering). Only inject the ones that are set so an all-None config
+        # behaves exactly like the previous defaults.
+        if self.temperature is not None:
+            generation_config["temperature"] = self.temperature
+        if self.compression_ratio_threshold is not None:
+            generation_config["compression_ratio_threshold"] = self.compression_ratio_threshold
+        if self.logprob_threshold is not None:
+            generation_config["logprob_threshold"] = self.logprob_threshold
+        if self.no_speech_threshold is not None:
+            generation_config["no_speech_threshold"] = self.no_speech_threshold
+        if self.compression_ratio_threshold is not None or self.logprob_threshold is not None:
+            self.log(
+                f"Hallucination filtering enabled: compression_ratio_threshold="
+                f"{self.compression_ratio_threshold}, logprob_threshold="
+                f"{self.logprob_threshold}, no_speech_threshold={self.no_speech_threshold}"
+            )
 
         # Re-create pipeline for long-form transcription
         self.pipe = pipeline(
@@ -135,102 +194,7 @@ class WhisperTranscriber:
         Returns:
             Tuple of (audio_array, duration_in_seconds)
         """
-        self.log(f"Loading audio: {audio_path}")
-
-        audio = None
-        original_duration = 0
-
-        # Try pydub first for better M4A/AAC support
-        if HAS_PYDUB:
-            try:
-                self.log("Trying pydub for audio loading...")
-                audio_segment = AudioSegment.from_file(audio_path)
-                original_duration = float(len(audio_segment) / 1000.0)  # milliseconds to seconds
-
-                # Apply segment selection if specified
-                if start_time is not None or end_time is not None:
-                    start_ms = int(start_time * 1000) if start_time is not None else 0
-                    end_ms = int(end_time * 1000) if end_time is not None else len(audio_segment)
-
-                    self.log(f"Extracting segment: {start_time or 0:.2f}s - {end_time or original_duration:.2f}s")
-                    audio_segment = audio_segment[start_ms:end_ms]
-
-                # Convert to mono 16kHz
-                audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
-                audio = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
-
-                # Normalize based on sample width
-                if audio_segment.sample_width == 2:
-                    audio = audio / 32768.0
-                elif audio_segment.sample_width == 4:
-                    audio = audio / 2147483648.0
-
-                duration = len(audio) / 16000.0
-                self.log(f"Successfully loaded audio with pydub. Duration: {duration:.2f}s")
-
-            except Exception as e:
-                self.log(f"Pydub failed: {e}")
-                audio = None
-
-        # Fallback to librosa if pydub fails
-        if audio is None:
-            try:
-                # Use soundfile backend to avoid audioread deprecation
-                import soundfile as sf
-                audio_data, sample_rate = sf.read(audio_path)
-
-                # Calculate original duration
-                original_duration = len(audio_data) / sample_rate
-
-                # Apply segment selection if specified
-                if start_time is not None or end_time is not None:
-                    start_sample = int(start_time * sample_rate) if start_time is not None else 0
-                    end_sample = int(end_time * sample_rate) if end_time is not None else len(audio_data)
-
-                    self.log(f"Extracting segment: {start_time or 0:.2f}s - {end_time or original_duration:.2f}s")
-                    audio_data = audio_data[start_sample:end_sample]
-
-                # Resample if needed
-                if sample_rate != 16000:
-                    audio = librosa.resample(audio_data, orig_sr=sample_rate, target_sr=16000)
-                else:
-                    audio = audio_data
-
-                # Convert to mono if stereo
-                if len(audio.shape) > 1:
-                    audio = np.mean(audio, axis=1)
-
-                duration = len(audio) / 16000.0
-                self.log(f"Successfully loaded audio with soundfile. Duration: {duration:.2f}s")
-
-            except Exception as e:
-                self.log(f"Soundfile failed: {e}")
-                # Final fallback: librosa (may show deprecation warnings)
-                try:
-                    audio, sample_rate = librosa.load(audio_path, sr=16000)
-
-                    # For librosa fallback, we need to handle segment selection differently
-                    if start_time is not None or end_time is not None:
-                        self.log("Warning: Segment selection with librosa fallback may be less accurate")
-                        start_sample = int(start_time * 16000) if start_time is not None else 0
-                        end_sample = int(end_time * 16000) if end_time is not None else len(audio)
-                        audio = audio[start_sample:end_sample]
-
-                    duration = len(audio) / 16000.0
-                    self.log(f"Successfully loaded audio with librosa (with warnings). Duration: {duration:.2f}s")
-
-                except Exception as e2:
-                    raise Exception(
-                        f"All audio loading methods failed. "
-                        f"Pydub: {e if HAS_PYDUB else 'Not available'}, "
-                        f"Soundfile: {e}, Librosa: {e2}"
-                    )
-
-        if audio is None or len(audio) == 0:
-            raise Exception("Audio file appears to be empty or corrupted")
-
-        duration = len(audio) / 16000.0
-        return audio, duration
+        return load_audio_segment(audio_path, start_time, end_time, log=self.log)
 
     def transcribe_audio(
         self,
@@ -387,31 +351,4 @@ class WhisperTranscriber:
         Returns:
             Path to saved file
         """
-        audio_name = Path(audio_path).stem
-
-        if output_format == 'json':
-            output_file = Path(output_dir) / f"{audio_name}.json"
-            self.log(f"Saving transcript to JSON: {output_file}")
-
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'audio_file': Path(audio_path).name,
-                    'duration': result['duration'],
-                    'processing_time': result['processing_time'],
-                    'text': result['text'],
-                    'chunks': result['chunks']
-                }, f, ensure_ascii=False, indent=2)
-
-        else:  # markdown (default)
-            output_file = Path(output_dir) / f"{audio_name}.md"
-            self.log(f"Saving transcript to Markdown: {output_file}")
-
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(f"# Transcript: {audio_name}\n\n")
-                f.write(f"**Source:** {Path(audio_path).name}\n\n")
-                f.write("## Content\n\n")
-                f.write(result['text'])
-                f.write("\n")
-
-        self.log(f"Transcript saved successfully")
-        return str(output_file)
+        return save_transcript(result, audio_path, output_dir, output_format, log=self.log)
