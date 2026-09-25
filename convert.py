@@ -142,7 +142,9 @@ Examples:
     parser.add_argument('-to', '--timeout', type=int,
                        help='Set timeout in seconds for each file processing.')
     parser.add_argument('-ch', '--chunked', nargs='?', const=30, type=int,
-                       help='Enable chunked long-form processing with specified chunk length in seconds (default: 30).')
+                       help='Use the chunked pipeline with this window length in seconds (default when given: 30). '
+                            'Without -ch, audio is decoded sequentially (Whisper long-form), which avoids '
+                            'duplicated text at window seams.')
     parser.add_argument('--flash-attn', action='store_true',
                        help='Enable Flash Attention 2 for faster processing on compatible GPUs (transformers engine only).')
     parser.add_argument('--engine', choices=['transformers', 'faster'], default='transformers',
@@ -190,7 +192,8 @@ Examples:
         args.timeout = None
 
     # Set chunk length based on chunked parameter
-    chunk_length = args.chunked if args.chunked is not None else 30
+    # 0 = sequential long-form decoding (see WhisperTranscriber.chunk_length)
+    chunk_length = args.chunked if args.chunked is not None else 0
 
     if args.engine == 'faster':
         try:

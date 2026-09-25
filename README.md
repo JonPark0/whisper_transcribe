@@ -20,6 +20,28 @@ This README provides a basic overview. For detailed instructions, please see the
 - Configurable timeout for processing
 - Outputs transcriptions in Markdown format
 
+## Engines
+
+Both engines run the same large-v3-turbo weights.
+
+| | `--engine faster` (faster-whisper / CTranslate2) | `--engine transformers` (default) |
+|---|---|---|
+| Speed, 14.6 min Korean speech, RTX 3060 6 GB | 51x realtime (17 s) | 10.5x realtime (84 s) |
+| Peak GPU memory | 3.3 GB | 2.5 GB |
+| Transcript vs. script | exact match | exact match |
+| Install | `pip install -e .[faster-whisper]` | included |
+
+The transformers engine decodes long audio **sequentially** by default
+(Whisper's long-form algorithm). The older chunked mode (`-ch 30`) decodes
+overlapping 30 s windows in parallel and stitches them together; on the same
+file it repeated whole sentences at window seams (+6.3% text) without being
+faster, so it is now opt-in.
+
+Translation: Whisper can only translate *into English*, and the
+large-v3-turbo checkpoint was not trained for translation at all (measured:
+`-tr en` returns the Korean transcript unchanged). Use `-e` with `-tr` to
+translate during the Gemini enhancement step instead.
+
 ## Setup
 
 1. Clone or download this repository

@@ -11,7 +11,7 @@ class TestWhisperTranscriber:
         """Test default initialization."""
         transcriber = WhisperTranscriber()
         assert transcriber.verbose is False
-        assert transcriber.chunk_length == 30
+        assert transcriber.chunk_length == 0  # sequential long-form by default
         assert transcriber.batch_size == 16
         assert transcriber.use_flash_attn is False
         assert transcriber.target_language is None
@@ -87,3 +87,50 @@ class TestWhisperTranscriber:
 
     # Note: We skip model loading tests as they require large downloads
     # and significant resources. Those should be integration tests.
+
+
+class TestFasterWhisperProgress:
+    """FasterWhisperTranscriber reports progress while consuming segments."""
+
+    def test_progress_follows_segment_end_times(self, monkeypatch):
+        from types import SimpleNamespace
+        import numpy as np
+        from core.faster_transcriber import FasterWhisperTranscriber
+
+        t = FasterWhisperTranscriber()
+        monkeypatch.setattr(t, "load_audio_segment", lambda *a, **k: (np.zeros(16000 * 100, dtype=np.float32), 100.0))
+
+        def fake_transcribe(audio, **kwargs):
+            def gen():
+                for start in range(0, 100, 10):
+                    yield SimpleNamespace(start=float(start), end=float(start + 10), text=f" s{start}")
+            return gen(), SimpleNamespace(language="ko", language_probability=0.99)
+
+        t.pipe = SimpleNamespace(transcribe=fake_transcribe)
+        seen = []
+        result = t.transcribe_audio("x.wav", enable_timestamps=True, progress_callback=seen.append)
+
+        assert result["success"] is True
+        assert len(result["chunks"]) == 10
+        transcribing = [u["progress"] for u in seen if u["stage"] == "transcribing" and "%" in u["message"]]
+        assert len(transcribing) == 10
+        assert transcribing == sorted(transcribing)
+        assert transcribing[-1] == pytest.approx(0.9)
+
+    def test_translate_to_non_english_is_not_passed_as_language(self, monkeypatch):
+        from types import SimpleNamespace
+        import numpy as np
+        from core.faster_transcriber import FasterWhisperTranscriber
+
+        t = FasterWhisperTranscriber(language="ko", target_language="ja")
+        monkeypatch.setattr(t, "load_audio_segment", lambda *a, **k: (np.zeros(16000, dtype=np.float32), 1.0))
+        calls = []
+
+        def fake_transcribe(audio, **kwargs):
+            calls.append(kwargs)
+            return iter([]), SimpleNamespace(language="ko", language_probability=0.99)
+
+        t.pipe = SimpleNamespace(transcribe=fake_transcribe)
+        assert t.transcribe_audio("x.wav")["success"] is True
+        assert calls[0]["task"] == "transcribe"
+        assert calls[0]["language"] == "ko"

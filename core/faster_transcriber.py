@@ -30,7 +30,7 @@ from typing import Optional, Callable, Dict, Any, Tuple, Union
 
 import numpy as np
 
-from .utils import format_timestamp, load_audio_segment, save_transcript
+from .utils import format_timestamp, load_audio_segment, resolve_whisper_task, save_transcript
 
 
 class FasterWhisperTranscriber:
@@ -70,7 +70,9 @@ class FasterWhisperTranscriber:
             use_flash_attn: Unused - CTranslate2 has its own fused kernels and
                              does not use HF's attention implementations;
                              kept for interface parity.
-            target_language: Target language for translation (ISO 639-1 code)
+            target_language: Translation target. Whisper can only translate
+                             into English ("en"); any other value is ignored
+                             here with a warning (the enhancer translates).
             model_id: CTranslate2 model repo id or local path. Defaults to a
                       float16 CT2 conversion of the same weights as
                       WhisperTranscriber's openai/whisper-large-v3-turbo
@@ -223,15 +225,13 @@ class FasterWhisperTranscriber:
             if self.pipe is None:
                 raise RuntimeError("Transcriber pipeline is not initialized. Call load_model() first.")
 
-            # target_language takes translate precedence, same convention as
-            # WhisperTranscriber.
-            if self.target_language:
-                task = "translate"
-                language = self.target_language
-                self.log(f"Translation enabled: translating to {self.target_language}")
-            else:
-                task = "transcribe"
-                language = self.language
+            # Same task/language mapping as WhisperTranscriber (Whisper only
+            # translates into English; language names the source).
+            task, language, warning = resolve_whisper_task(self.language, self.target_language, self.model_id)
+            if warning:
+                print(f"[WARNING] {warning}")
+            if task == "translate":
+                self.log("Translation enabled: translating to English")
 
             segments, info = self.pipe.transcribe(
                 audio,
@@ -245,7 +245,24 @@ class FasterWhisperTranscriber:
                 log_prob_threshold=self.logprob_threshold,
                 no_speech_threshold=self.no_speech_threshold,
             )
-            segments = list(segments)  # the generator only runs once; materialize it
+            # The generator decodes lazily, batch by batch - consume it here
+            # (it only runs once) and report progress by how far into the
+            # audio the latest segment ends. Throttled to whole-percent steps
+            # because callers like whisper_webui commit to a DB per update.
+            collected = []
+            last_reported = -1
+            for seg in segments:
+                collected.append(seg)
+                if progress_callback and duration > 0:
+                    pct = int(100 * min(seg.end / duration, 1.0))
+                    if pct > last_reported:
+                        last_reported = pct
+                        progress_callback({
+                            'stage': 'transcribing',
+                            'progress': 0.2 + 0.7 * pct / 100,
+                            'message': f'Transcribed {pct}% of audio'
+                        })
+            segments = collected
 
             if progress_callback:
                 progress_callback({

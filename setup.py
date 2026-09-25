@@ -36,7 +36,7 @@ faster_whisper_requirements = [
 
 # Optional dependencies for enhancement
 enhancement_requirements = [
-    "google-generativeai>=0.8.0",
+    "google-genai>=1.0.0",
     "python-dotenv>=1.0.0",
 ]
 

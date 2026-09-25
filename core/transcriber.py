@@ -6,7 +6,7 @@ import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import numpy as np
 
-from .utils import format_timestamp, load_audio_segment, save_transcript
+from .utils import format_timestamp, load_audio_segment, resolve_whisper_task, save_transcript
 
 
 class WhisperTranscriber:
@@ -19,7 +19,7 @@ class WhisperTranscriber:
     def __init__(
         self,
         verbose: bool = False,
-        chunk_length: int = 30,
+        chunk_length: int = 0,
         batch_size: int = 16,
         use_flash_attn: bool = False,
         target_language: Optional[str] = None,
@@ -35,11 +35,23 @@ class WhisperTranscriber:
 
         Args:
             verbose: Enable detailed logging
-            chunk_length: Length of audio chunks in seconds (default: 30)
+            chunk_length: 0 (default) = Whisper's sequential long-form
+                          decoding: 30s windows decoded in order, each one
+                          resuming at the previous window's last timestamp.
+                          >0 = the pipeline's chunked mode: overlapping
+                          windows of this length decoded in parallel and
+                          stitched back together. Measured on 14.6 min of
+                          non-repeating Korean speech: chunked (30) inserted
+                          6.3% duplicated text at window seams (whole
+                          sentences repeated), sequential matched the script
+                          exactly, at similar speed (10.5x vs 9-12x realtime)
+                          and lower VRAM (2.5 vs 3.4 GB peak).
             batch_size: Number of audio chunks to process simultaneously (default: 16).
                         Lower values reduce VRAM usage at the cost of speed.
             use_flash_attn: Enable Flash Attention 2 for faster GPU processing
-            target_language: Target language for translation (ISO 639-1 code)
+            target_language: Translation target. Whisper can only translate
+                             into English ("en"); any other value is ignored
+                             here with a warning (the enhancer translates).
             model_id: HuggingFace repo id for the Whisper model
             language: Force recognition language (e.g. "korean", "english").
                       None = Whisper auto-detects. Distinct from target_language,
@@ -136,14 +148,16 @@ class WhisperTranscriber:
         }
 
         # Add language settings if specified
-        if self.target_language:
-            generation_config["language"] = self.target_language
+        task, language, warning = resolve_whisper_task(self.language, self.target_language, self.model_id)
+        if warning:
+            print(f"[WARNING] {warning}")
+        if task == "translate":
             generation_config["task"] = "translate"
-            self.log(f"Translation enabled: translating to {self.target_language}")
-        elif self.language:
-            generation_config["language"] = self.language
-            generation_config["task"] = "transcribe"
-            self.log(f"Recognition language forced to {self.language}")
+            self.log("Translation enabled: translating to English")
+        if language:
+            generation_config["language"] = language
+            generation_config.setdefault("task", "transcribe")
+            self.log(f"Recognition language forced to {language}")
 
         # Decoding-robustness knobs (temperature fallback ladder + hallucination
         # filtering). Only inject the ones that are set so an all-None config
@@ -169,13 +183,14 @@ class WhisperTranscriber:
             model=self.model,
             tokenizer=self.processor.tokenizer,
             feature_extractor=self.processor.feature_extractor,
-            chunk_length_s=self.chunk_length,
+            chunk_length_s=self.chunk_length or None,
             batch_size=self.batch_size,
             return_timestamps=True,
             device=device,
             generate_kwargs=generation_config
         )
-        self.log(f"Model loaded successfully on {device} with chunk length {self.chunk_length}s")
+        mode = f"chunked ({self.chunk_length}s windows)" if self.chunk_length else "sequential long-form"
+        self.log(f"Model loaded successfully on {device} ({mode} decoding)")
 
     def load_audio_segment(
         self,
